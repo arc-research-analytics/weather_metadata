@@ -1,0 +1,934 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weather Stations</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☀️</text></svg>"
+    />
+
+    <!-- Mapbox GL JS -->
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+
+    <!-- Web Awesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@awesome.me/webawesome@3.4.0/dist-cdn/styles/webawesome.css"
+    />
+    <script
+      type="module"
+      src="https://cdn.jsdelivr.net/npm/@awesome.me/webawesome@3.4.0/dist-cdn/webawesome.loader.js"
+    ></script>
+
+    <style>
+      @font-face {
+        font-family: "DINPro";
+        src: url("fonts/DINPro-Bold.otf") format("opentype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "DINPro";
+        src: url("fonts/DINPro-Medium.otf") format("opentype");
+        font-weight: 500;
+        font-style: normal;
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "DINPro", "Arial Narrow", Arial, sans-serif;
+        background: #0b0b18;
+        color: #e0e0f0;
+        height: 100vh;
+        overflow: hidden;
+      }
+
+      #map {
+        position: absolute;
+        inset: 0;
+      }
+
+      /* ── Shared panel ─────────────────────────────────────────────────────── */
+      .panel {
+        background: rgba(68, 68, 68, 0.95);
+        border: 1px solid rgba(0, 0, 0, 0.7);
+        border-radius: 8px;
+        padding: 14px 16px;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      .panel-title {
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: rgba(0, 255, 255, 0.7);
+        margin-bottom: 10px;
+      }
+
+      .divider {
+        height: 1px;
+        background: rgba(0, 0, 0, 0.25);
+        margin: 10px 0;
+      }
+
+      /* ── Control panel (top-left) ─────────────────────────────────────────── */
+      #control-panel {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        z-index: 10;
+        width: 210px;
+      }
+
+      .map-title {
+        font-weight: 700;
+        font-size: 16px;
+        line-height: 1.25;
+        color: #ffffff;
+        margin-bottom: 14px;
+      }
+
+      .map-subtitle {
+        font-weight: 500;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.35);
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        margin-top: 2px;
+      }
+
+      /* Source filter */
+      .filter-label {
+        font-weight: 700;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.09em;
+        color: rgba(255, 255, 255, 0.38);
+        margin-bottom: 7px;
+      }
+
+      .source-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+
+      .source-grid wa-switch {
+        font-family: "DINPro", sans-serif;
+        font-size: 12px;
+        color: #ffffff;
+        --thumb-size: 14px;
+        --track-height: 16px;
+        --track-width: 30px;
+      }
+      /* On: cyan track. [data-off] is set by JS when the switch is toggled off. */
+      .source-grid wa-switch::part(control) {
+        background-color: #00ffff !important;
+        transition: background-color 0.15s;
+      }
+      .source-grid wa-switch[data-off]::part(control) {
+        background-color: #555555 !important;
+      }
+      /* White label text */
+      .source-grid wa-switch::part(label) {
+        color: #ffffff;
+      }
+
+      /* Status filter */
+      .status-row {
+        display: flex;
+        gap: 4px;
+      }
+
+      .status-btn {
+        flex: 1;
+        padding: 5px 0;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 4px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.45);
+        font-family: "DINPro", sans-serif;
+        font-weight: 700;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.12s;
+      }
+      .status-btn:hover {
+        border-color: rgba(255, 255, 255, 0.25);
+        color: rgba(255, 255, 255, 0.7);
+      }
+      .status-btn.sel-all {
+        border-color: #00ffff;
+        color: #00ffff;
+        background: rgba(0, 255, 255, 0.08);
+      }
+      .status-btn.sel-active {
+        border-color: #00ffff;
+        color: #00ffff;
+        background: rgba(0, 255, 255, 0.08);
+      }
+      .status-btn.sel-extinct {
+        border-color: #ee575d;
+        color: #ee575d;
+        background: rgba(238, 87, 93, 0.08);
+      }
+
+      /* ── KPI panel (bottom-left) ──────────────────────────────────────────── */
+      #kpi-panel {
+        position: absolute;
+        bottom: 32px;
+        left: 16px;
+        z-index: 10;
+        width: 210px;
+      }
+
+      .kpi-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 7px;
+      }
+
+      .kpi-label {
+        font-weight: 700;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        color: rgba(255, 255, 255, 0.38);
+      }
+
+      .kpi-val {
+        font-weight: 700;
+        font-size: 18px;
+        color: #ffffff;
+        line-height: 1;
+      }
+
+      .kpi-sub-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+
+      .kpi-sub-item {
+        font-size: 11px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.45);
+      }
+
+      .kpi-sub-item b {
+        font-weight: 700;
+      }
+      .kpi-sub-item b.cyan {
+        color: #00ffff;
+      }
+      .kpi-sub-item b.red {
+        color: #ee575d;
+      }
+
+      .source-counts {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px 10px;
+        margin-bottom: 7px;
+      }
+
+      .sc-item {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+      }
+      .sc-item .sc-src {
+        color: rgba(255, 255, 255, 0.38);
+        font-weight: 700;
+      }
+      .sc-item .sc-n {
+        color: #e0e0f0;
+        font-weight: 700;
+      }
+
+      .kpi-years {
+        font-weight: 700;
+        font-size: 18px;
+        color: #00ffff;
+        line-height: 1;
+      }
+
+      /* ── Legend (bottom-right) ────────────────────────────────────────────── */
+      #legend {
+        position: absolute;
+        bottom: 32px;
+        right: 16px;
+        z-index: 10;
+      }
+
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: rgba(255, 255, 255, 0.6);
+        margin-bottom: 5px;
+      }
+      .legend-row:last-child {
+        margin-bottom: 0;
+      }
+
+      .leg-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      /* ── Mapbox popup ─────────────────────────────────────────────────────── */
+      /* Hide Mapbox branding */
+      .mapboxgl-ctrl-logo,
+      .mapboxgl-ctrl-attrib-button,
+      .mapboxgl-ctrl-attrib,
+      .mapboxgl-ctrl-zoom-in {
+        display: none !important;
+      }
+      .mapboxgl-ctrl-zoom-out {
+        display: none !important;
+      }
+
+      .mapboxgl-popup-content {
+        padding: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 8px !important;
+      }
+      .mapboxgl-popup-tip {
+        display: none !important;
+      }
+      .mapboxgl-popup-close-button {
+        color: rgba(255, 255, 255, 0.4) !important;
+        font-size: 16px !important;
+        right: 6px !important;
+        top: 4px !important;
+      }
+      .mapboxgl-popup-close-button:hover {
+        color: #fff !important;
+      }
+
+      .popup-card {
+        background: rgba(11, 11, 24, 0.97);
+        border: 1px solid rgba(0, 255, 255, 0.22);
+        border-radius: 8px;
+        padding: 14px 16px 14px 16px;
+        min-width: 210px;
+        max-width: 270px;
+        font-family: "DINPro", sans-serif;
+      }
+
+      .popup-badge {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        padding: 2px 7px;
+        border-radius: 3px;
+        margin-bottom: 7px;
+      }
+
+      .popup-name {
+        font-weight: 700;
+        font-size: 13px;
+        color: #fff;
+        line-height: 1.3;
+        margin-bottom: 2px;
+      }
+
+      .popup-id {
+        font-weight: 500;
+        font-size: 10px;
+        color: rgba(255, 255, 255, 0.3);
+        margin-bottom: 10px;
+        word-break: break-all;
+      }
+
+      .popup-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 9px 10px;
+      }
+
+      .popup-stat-label {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: rgba(255, 255, 255, 0.35);
+        margin-bottom: 1px;
+      }
+
+      .popup-stat-value {
+        font-size: 12px;
+        font-weight: 700;
+        color: #e0e0f0;
+      }
+
+      .popup-extinct {
+        margin-top: 10px;
+        padding: 4px 0;
+        background: rgba(238, 87, 93, 0.12);
+        border: 1px solid rgba(238, 87, 93, 0.35);
+        border-radius: 4px;
+        color: #ee575d;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <!-- Control Panel -->
+    <div id="control-panel">
+      <div class="panel">
+        <div class="map-title">Metro Atlanta<br />Weather Stations</div>
+
+        <div class="filter-label">Source</div>
+        <div class="source-grid">
+          <wa-switch data-source="WU" checked>Weather Underground</wa-switch>
+          <wa-switch data-source="AWN" checked
+            >Ambient Weather Network</wa-switch
+          >
+          <wa-switch data-source="GDOT" checked>GDOT</wa-switch>
+          <wa-switch data-source="UGA" checked>UGA</wa-switch>
+        </div>
+
+        <div class="filter-label">Status</div>
+        <div class="status-row">
+          <button class="status-btn sel-all" data-s="all">All</button>
+          <button class="status-btn" data-s="active">Active</button>
+          <button class="status-btn" data-s="extinct">Extinct</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- KPI Panel -->
+    <div id="kpi-panel">
+      <div class="panel">
+        <div class="panel-title">In Current View</div>
+
+        <div class="kpi-row">
+          <span class="kpi-label">Total Stations</span>
+          <span class="kpi-val" id="kpi-total">—</span>
+        </div>
+
+        <div class="kpi-sub-row">
+          <span class="kpi-sub-item"
+            ><b class="cyan" id="kpi-active">—</b> active</span
+          >
+          <span class="kpi-sub-item"
+            ><b class="red" id="kpi-extinct">—</b> extinct</span
+          >
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="filter-label" style="margin-bottom: 6px">By Source</div>
+        <div class="source-counts">
+          <div class="sc-item">
+            <span class="sc-src">WU</span>
+            <span class="sc-n" id="kpi-wu">—</span>
+          </div>
+          <div class="sc-item">
+            <span class="sc-src">AWN</span>
+            <span class="sc-n" id="kpi-awn">—</span>
+          </div>
+          <div class="sc-item">
+            <span class="sc-src">GDOT</span
+            ><span class="sc-n" id="kpi-gdot">—</span>
+          </div>
+          <div class="sc-item">
+            <span class="sc-src">UGA</span>
+            <span class="sc-n" id="kpi-uga">—</span>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="kpi-row">
+          <span class="kpi-label">Avg Years Collected</span>
+          <span class="kpi-years" id="kpi-years">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div id="legend">
+      <div class="panel" style="padding: 10px 14px">
+        <div class="legend-row">
+          <div class="leg-dot" style="background: #00ffff"></div>
+          Active station
+        </div>
+        <div class="legend-row">
+          <div class="leg-dot" style="background: #ee575d"></div>
+          Extinct station
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ── Config ───────────────────────────────────────────────────────────────────
+      // Replace with your Mapbox public token before deploying.
+      mapboxgl.accessToken =
+        "pk.eyJ1Ijoid3dyaWdodDIxIiwiYSI6ImNtN2MwdjdtYjBqeTUycnBwbHI1cWJrZmIifQ.BztD8jx6SLKxOtjK1ae4kg";
+
+      const MAP_CENTER = [-84.396147, 33.843943];
+      const MAP_ZOOM = 8.5;
+      const COLOR_ACTIVE = "#00FFFF";
+      const COLOR_EXTINCT = "#ee575d";
+
+      // Per-source badge colors (popup only)
+      const SOURCE_COLOR = {
+        WU: {
+          bg: "rgba(96,165,250,0.15)",
+          border: "rgba(96,165,250,0.4)",
+          text: "#60a5fa",
+        },
+        AWN: {
+          bg: "rgba(52,211,153,0.15)",
+          border: "rgba(52,211,153,0.4)",
+          text: "#34d399",
+        },
+        GDOT: {
+          bg: "rgba(251,146,60,0.15)",
+          border: "rgba(251,146,60,0.4)",
+          text: "#fb923c",
+        },
+        UGA: {
+          bg: "rgba(167,139,250,0.15)",
+          border: "rgba(167,139,250,0.4)",
+          text: "#a78bfa",
+        },
+      };
+
+      // ── State ────────────────────────────────────────────────────────────────────
+      let stationsData = null; // raw GeoJSON from stations.geojson
+      let activeSources = new Set(["WU", "AWN", "GDOT", "UGA"]);
+      let statusFilter = "all"; // 'all' | 'active' | 'extinct'
+      let popup = null;
+
+      // ── Map init ─────────────────────────────────────────────────────────────────
+      const map = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/dark-v11",
+        center: MAP_CENTER,
+        zoom: MAP_ZOOM,
+        minZoom: 7,
+        maxBounds: [
+          [-86.5, 32.2],
+          [-82.5, 35.8],
+        ], // keeps view within Georgia
+        attributionControl: false,
+      });
+
+      map.addControl(
+        new mapboxgl.AttributionControl({ compact: true }),
+        "bottom-right",
+      );
+      map.addControl(
+        new mapboxgl.NavigationControl({ showCompass: false }),
+        "top-right",
+      );
+
+      // ── Filter helpers ────────────────────────────────────────────────────────────
+      function buildMapboxFilter(includeClusterGuard) {
+        const srcList = [...activeSources];
+        const srcExpr = ["in", ["get", "source"], ["literal", srcList]];
+
+        const statusExpr =
+          statusFilter === "active"
+            ? ["==", ["get", "extinct"], false]
+            : statusFilter === "extinct"
+              ? ["==", ["get", "extinct"], true]
+              : null;
+
+        const conditions = includeClusterGuard
+          ? [["!", ["has", "point_count"]], srcExpr]
+          : [srcExpr];
+        if (statusExpr) conditions.push(statusExpr);
+
+        return conditions.length === 1 ? conditions[0] : ["all", ...conditions];
+      }
+
+      function filteredFeatures() {
+        return stationsData.features.filter((f) => {
+          const p = f.properties;
+          if (!activeSources.has(p.source)) return false;
+          if (statusFilter === "active" && p.extinct) return false;
+          if (statusFilter === "extinct" && !p.extinct) return false;
+          return true;
+        });
+      }
+
+      // ── Apply filters to all layers ───────────────────────────────────────────────
+      function applyFilters() {
+        console.log("[applyFilters] activeSources:", [...activeSources], "| statusFilter:", statusFilter);
+        // Rebuild the clustered source with only the visible subset so clusters
+        // accurately reflect the filtered station count.
+        map.getSource("stations-clustered").setData({
+          type: "FeatureCollection",
+          features: filteredFeatures(),
+        });
+
+        map.setFilter("unclustered-active", [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "extinct"], false],
+        ]);
+        map.setFilter("unclustered-extinct", [
+          "all",
+          ["!", ["has", "point_count"]],
+          ["==", ["get", "extinct"], true],
+        ]);
+
+        // Invisible query layer mirrors the same user filter.
+        map.setFilter("stations-invisible", buildMapboxFilter(false));
+
+        // Defer KPI update until the map has finished re-rendering the new data.
+        // Calling updateKPIs() immediately after setData() reads stale rendered features.
+        map.once("idle", updateKPIs);
+      }
+
+      // ── KPI computation ───────────────────────────────────────────────────────────
+      function updateKPIs() {
+        if (!map.getLayer("stations-invisible")) return;
+        const raw = map.queryRenderedFeatures({
+          layers: ["stations-invisible"],
+        });
+
+        // Deduplicate across tile boundaries by station_id.
+        const seen = new Set();
+        const unique = [];
+        for (const f of raw) {
+          const key = f.properties.station_id || `${f.geometry.coordinates}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(f);
+          }
+        }
+
+        let nActive = 0,
+          nExtinct = 0,
+          totalYears = 0;
+        const srcN = { WU: 0, AWN: 0, GDOT: 0, UGA: 0 };
+
+        for (const f of unique) {
+          const p = f.properties;
+          p.extinct ? nExtinct++ : nActive++;
+          if (p.source in srcN) srcN[p.source]++;
+          totalYears += parseFloat(p.years_active) || 0;
+        }
+
+        const total = unique.length;
+        const avgYears = total > 0 ? (totalYears / total).toFixed(1) : "—";
+
+        document.getElementById("kpi-total").textContent =
+          total.toLocaleString();
+        document.getElementById("kpi-active").textContent =
+          nActive.toLocaleString();
+        document.getElementById("kpi-extinct").textContent =
+          nExtinct.toLocaleString();
+        document.getElementById("kpi-wu").textContent =
+          srcN.WU.toLocaleString();
+        document.getElementById("kpi-awn").textContent =
+          srcN.AWN.toLocaleString();
+        document.getElementById("kpi-gdot").textContent =
+          srcN.GDOT.toLocaleString();
+        document.getElementById("kpi-uga").textContent =
+          srcN.UGA.toLocaleString();
+        document.getElementById("kpi-years").textContent = avgYears;
+      }
+
+      // ── Map load ──────────────────────────────────────────────────────────────────
+      map.on("load", async () => {
+        const resp = await fetch("stations.geojson");
+        stationsData = await resp.json();
+
+        // ── County boundaries ─────────────────────────────────────────────────────
+        map.addSource("counties", {
+          type: "geojson",
+          data: "metro_atlanta_counties.geojson",
+        });
+
+        map.addLayer({
+          id: "county-outline",
+          type: "line",
+          source: "counties",
+          paint: {
+            "line-color": "#ffffff",
+            "line-width": 1.8,
+          },
+        });
+
+        // ── Source A: clustered (what the user sees) ──────────────────────────────
+        map.addSource("stations-clustered", {
+          type: "geojson",
+          data: stationsData,
+          cluster: true,
+          clusterMaxZoom: 12,
+          clusterRadius: 45,
+        });
+
+        // Cluster bubbles — three tiers: small (cyan), medium (amber), large (red)
+        map.addLayer({
+          id: "clusters",
+          type: "circle",
+          source: "stations-clustered",
+          filter: ["has", "point_count"],
+          paint: {
+            "circle-color": "rgba(0,220,220,0.82)",
+            "circle-radius": [
+              "step",
+              ["get", "point_count"],
+              16,
+              10,
+              24,
+              75,
+              34,
+            ],
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": "#00FFFF",
+          },
+        });
+
+        // Cluster count labels — use Mapbox's hosted DIN font so it renders in-canvas
+        map.addLayer({
+          id: "cluster-count",
+          type: "symbol",
+          source: "stations-clustered",
+          filter: ["has", "point_count"],
+          layout: {
+            "text-field": "{point_count_abbreviated}",
+            "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
+            "text-size": 12,
+          },
+          paint: { "text-color": "#0b0b18" },
+        });
+
+        // Unclustered active points
+        map.addLayer({
+          id: "unclustered-active",
+          type: "circle",
+          source: "stations-clustered",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]],
+            ["==", ["get", "extinct"], false],
+          ],
+          paint: {
+            "circle-color": COLOR_ACTIVE,
+            "circle-radius": 5,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(0,0,0,0.5)",
+          },
+        });
+
+        // Unclustered extinct points
+        map.addLayer({
+          id: "unclustered-extinct",
+          type: "circle",
+          source: "stations-clustered",
+          filter: [
+            "all",
+            ["!", ["has", "point_count"]],
+            ["==", ["get", "extinct"], true],
+          ],
+          paint: {
+            "circle-color": COLOR_EXTINCT,
+            "circle-radius": 5,
+            "circle-stroke-width": 1,
+            "circle-stroke-color": "rgba(0,0,0,0.5)",
+          },
+        });
+
+        // ── Source B: raw (invisible — for queryRenderedFeatures) ─────────────────
+        // No clustering so every point is always individually rendered (at 0 opacity),
+        // meaning queryRenderedFeatures returns accurate per-station counts at any zoom.
+        map.addSource("stations-raw", {
+          type: "geojson",
+          data: stationsData, // same object — browser does not re-fetch
+        });
+
+        map.addLayer({
+          id: "stations-invisible",
+          type: "circle",
+          source: "stations-raw",
+          paint: {
+            "circle-opacity": 0,
+            "circle-stroke-opacity": 0,
+            "circle-radius": 5,
+          },
+        });
+
+        // Initial filter sync — defer KPI render until tiles are fully loaded
+        map.setFilter("stations-invisible", buildMapboxFilter(false));
+        map.once("idle", updateKPIs);
+      });
+
+      // ── KPI refresh on pan/zoom ───────────────────────────────────────────────────
+      map.on("moveend", updateKPIs);
+
+      // ── Cluster click: zoom to expand ────────────────────────────────────────────
+      map.on("click", "clusters", (e) => {
+        const [feature] = map.queryRenderedFeatures(e.point, {
+          layers: ["clusters"],
+        });
+        map
+          .getSource("stations-clustered")
+          .getClusterExpansionZoom(
+            feature.properties.cluster_id,
+            (err, zoom) => {
+              if (!err)
+                map.easeTo({ center: feature.geometry.coordinates, zoom });
+            },
+          );
+      });
+
+      // ── Station click: popup ──────────────────────────────────────────────────────
+      function showStationPopup(feature, lngLat) {
+        if (popup) popup.remove();
+
+        const p = feature.properties;
+        const extinct = p.extinct === true || p.extinct === "true";
+        const sc = SOURCE_COLOR[p.source] || SOURCE_COLOR.WU;
+        const obs = Number(p.total_observations || 0).toLocaleString();
+        const days = Number(p.total_days || 0).toLocaleString();
+        const years = parseFloat(p.years_active || 0).toFixed(1);
+        const name = p.name && p.name.trim() ? p.name : p.station_id;
+        const showId = p.name && p.name.trim() && p.name !== p.station_id;
+
+        const html = `
+        <div class="popup-card">
+            <div class="popup-badge"
+                 style="background:${sc.bg};border:1px solid ${sc.border};color:${sc.text};">
+                ${p.source}
+            </div>
+            <div class="popup-name">${name}</div>
+            ${showId ? `<div class="popup-id">${p.station_id}</div>` : ""}
+            <div class="popup-stats">
+                <div>
+                    <div class="popup-stat-label">First Record</div>
+                    <div class="popup-stat-value">${p.earliest_date || "—"}</div>
+                </div>
+                <div>
+                    <div class="popup-stat-label">Last Record</div>
+                    <div class="popup-stat-value">${p.latest_date || "—"}</div>
+                </div>
+                <div>
+                    <div class="popup-stat-label">Days Collected</div>
+                    <div class="popup-stat-value">${days}</div>
+                </div>
+                <div>
+                    <div class="popup-stat-label">Observations</div>
+                    <div class="popup-stat-value">${obs}</div>
+                </div>
+                <div>
+                    <div class="popup-stat-label">Years Active</div>
+                    <div class="popup-stat-value">${years}</div>
+                </div>
+            </div>
+            ${extinct ? '<div class="popup-extinct">No recent data</div>' : ""}
+        </div>`;
+
+        popup = new mapboxgl.Popup({
+          closeButton: true,
+          maxWidth: "300px",
+          offset: 10,
+        })
+          .setLngLat(lngLat)
+          .setHTML(html)
+          .addTo(map);
+      }
+
+      map.on("click", "unclustered-active", (e) =>
+        showStationPopup(e.features[0], e.lngLat),
+      );
+      map.on("click", "unclustered-extinct", (e) =>
+        showStationPopup(e.features[0], e.lngLat),
+      );
+
+      // ── Cursor changes ────────────────────────────────────────────────────────────
+      ["clusters", "unclustered-active", "unclustered-extinct"].forEach(
+        (layer) => {
+          map.on("mouseenter", layer, () => {
+            map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", layer, () => {
+            map.getCanvas().style.cursor = "";
+          });
+        },
+      );
+
+      // ── Filter controls ───────────────────────────────────────────────────────────
+      console.log("[switches] customElements.whenDefined called");
+      customElements.whenDefined("wa-switch").then(() => {
+        const switches = document.querySelectorAll("wa-switch[data-source]");
+        console.log("[switches] wa-switch defined. Found elements:", switches.length);
+        switches.forEach((sw) => {
+          console.log("[switches] attaching wa-change to", sw.dataset.source, "| nodeName:", sw.nodeName, "| constructor:", sw.constructor.name);
+
+          // Also try 'change' as a fallback in case wa-change isn't the right event name
+          ["wa-change", "change"].forEach((evtName) => {
+            sw.addEventListener(evtName, (e) => {
+              console.log(`[switches] '${evtName}' fired on ${sw.dataset.source} | checked: ${sw.checked}`);
+              if (sw.checked) {
+                sw.removeAttribute("data-off");
+                activeSources.add(sw.dataset.source);
+              } else {
+                sw.setAttribute("data-off", "");
+                activeSources.delete(sw.dataset.source);
+              }
+              console.log("[switches] activeSources now:", [...activeSources]);
+              applyFilters();
+            });
+          });
+        });
+      });
+
+      document.querySelectorAll(".status-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          statusFilter = btn.dataset.s;
+          console.log("[status-btn] clicked:", statusFilter);
+          document.querySelectorAll(".status-btn").forEach((b) => {
+            b.className = "status-btn";
+            if (b.dataset.s === statusFilter) {
+              b.classList.add(
+                statusFilter === "extinct" ? "sel-extinct" : "sel-all",
+              );
+            }
+          });
+          applyFilters();
+        });
+      });
+    </script>
+  </body>
+</html>
