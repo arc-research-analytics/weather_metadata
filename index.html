@@ -497,7 +497,6 @@
 
     <script>
       // ── Config ───────────────────────────────────────────────────────────────────
-      // Replace with your Mapbox public token before deploying.
       mapboxgl.accessToken =
         "pk.eyJ1Ijoid3dyaWdodDIxIiwiYSI6ImNtN2MwdjdtYjBqeTUycnBwbHI1cWJrZmIifQ.BztD8jx6SLKxOtjK1ae4kg";
 
@@ -508,30 +507,13 @@
 
       // Per-source badge colors (popup only)
       const SOURCE_COLOR = {
-        WU: {
-          bg: "rgba(96,165,250,0.15)",
-          border: "rgba(96,165,250,0.4)",
-          text: "#60a5fa",
-        },
-        AWN: {
-          bg: "rgba(52,211,153,0.15)",
-          border: "rgba(52,211,153,0.4)",
-          text: "#34d399",
-        },
-        GDOT: {
-          bg: "rgba(251,146,60,0.15)",
-          border: "rgba(251,146,60,0.4)",
-          text: "#fb923c",
-        },
-        UGA: {
-          bg: "rgba(167,139,250,0.15)",
-          border: "rgba(167,139,250,0.4)",
-          text: "#a78bfa",
-        },
+        WU:   { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.4)",  text: "#60a5fa" },
+        AWN:  { bg: "rgba(52,211,153,0.15)",  border: "rgba(52,211,153,0.4)",  text: "#34d399" },
+        GDOT: { bg: "rgba(251,146,60,0.15)",  border: "rgba(251,146,60,0.4)",  text: "#fb923c" },
+        UGA:  { bg: "rgba(167,139,250,0.15)", border: "rgba(167,139,250,0.4)", text: "#a78bfa" },
       };
 
       // ── State ────────────────────────────────────────────────────────────────────
-      let stationsData = null; // raw GeoJSON from stations.geojson
       let activeSources = new Set(["WU", "AWN", "GDOT", "UGA"]);
       let statusFilter = "all"; // 'all' | 'active' | 'extinct'
       let popup = null;
@@ -543,87 +525,41 @@
         center: MAP_CENTER,
         zoom: MAP_ZOOM,
         minZoom: 7,
-        maxBounds: [
-          [-86.5, 32.2],
-          [-82.5, 35.8],
-        ], // keeps view within Georgia
+        maxBounds: [[-86.5, 32.2], [-82.5, 35.8]],
         attributionControl: false,
       });
 
-      map.addControl(
-        new mapboxgl.AttributionControl({ compact: true }),
-        "bottom-right",
-      );
-      map.addControl(
-        new mapboxgl.NavigationControl({ showCompass: false }),
-        "top-right",
-      );
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
-      // ── Filter helpers ────────────────────────────────────────────────────────────
-      function buildMapboxFilter(includeClusterGuard) {
-        const srcList = [...activeSources];
-        const srcExpr = ["in", ["get", "source"], ["literal", srcList]];
-
-        const statusExpr =
-          statusFilter === "active"
-            ? ["==", ["get", "extinct"], false]
-            : statusFilter === "extinct"
-              ? ["==", ["get", "extinct"], true]
-              : null;
-
-        const conditions = includeClusterGuard
-          ? [["!", ["has", "point_count"]], srcExpr]
-          : [srcExpr];
-        if (statusExpr) conditions.push(statusExpr);
-
-        return conditions.length === 1 ? conditions[0] : ["all", ...conditions];
-      }
-
-      function filteredFeatures() {
-        return stationsData.features.filter((f) => {
-          const p = f.properties;
-          if (!activeSources.has(p.source)) return false;
-          if (statusFilter === "active" && p.extinct) return false;
-          if (statusFilter === "extinct" && !p.extinct) return false;
-          return true;
-        });
-      }
-
-      // ── Apply filters to all layers ───────────────────────────────────────────────
+      // ── Apply filters to dot layers ───────────────────────────────────────────────
       function applyFilters() {
-        console.log("[applyFilters] activeSources:", [...activeSources], "| statusFilter:", statusFilter);
-        // Rebuild the clustered source with only the visible subset so clusters
-        // accurately reflect the filtered station count.
-        map.getSource("stations-clustered").setData({
-          type: "FeatureCollection",
-          features: filteredFeatures(),
-        });
+        const srcList = [...activeSources];
+        const srcExpr = srcList.length > 0
+          ? ["in", ["get", "source"], ["literal", srcList]]
+          : ["==", ["literal", false], true]; // no sources → show nothing
 
-        map.setFilter("unclustered-active", [
-          "all",
-          ["!", ["has", "point_count"]],
-          ["==", ["get", "extinct"], false],
-        ]);
-        map.setFilter("unclustered-extinct", [
-          "all",
-          ["!", ["has", "point_count"]],
-          ["==", ["get", "extinct"], true],
-        ]);
+        // Active dots: visible unless status filter is "extinct"
+        map.setFilter("dots-active",
+          statusFilter === "extinct"
+            ? ["==", ["literal", false], true]
+            : ["all", ["==", ["get", "extinct"], false], srcExpr]
+        );
 
-        // Invisible query layer mirrors the same user filter.
-        map.setFilter("stations-invisible", buildMapboxFilter(false));
+        // Extinct dots: visible unless status filter is "active"
+        map.setFilter("dots-extinct",
+          statusFilter === "active"
+            ? ["==", ["literal", false], true]
+            : ["all", ["==", ["get", "extinct"], true], srcExpr]
+        );
 
-        // Defer KPI update until the map has finished re-rendering the new data.
-        // Calling updateKPIs() immediately after setData() reads stale rendered features.
         map.once("idle", updateKPIs);
       }
 
       // ── KPI computation ───────────────────────────────────────────────────────────
       function updateKPIs() {
-        if (!map.getLayer("stations-invisible")) return;
-        const raw = map.queryRenderedFeatures({
-          layers: ["stations-invisible"],
-        });
+        if (!map.getLayer("dots-active")) return;
+        const raw = map.queryRenderedFeatures({ layers: ["dots-active", "dots-extinct"] });
 
         // Deduplicate across tile boundaries by station_id.
         const seen = new Set();
@@ -636,9 +572,7 @@
           }
         }
 
-        let nActive = 0,
-          nExtinct = 0,
-          totalYears = 0;
+        let nActive = 0, nExtinct = 0, totalYears = 0;
         const srcN = { WU: 0, AWN: 0, GDOT: 0, UGA: 0 };
 
         for (const f of unique) {
@@ -651,99 +585,45 @@
         const total = unique.length;
         const avgYears = total > 0 ? (totalYears / total).toFixed(1) : "—";
 
-        document.getElementById("kpi-total").textContent =
-          total.toLocaleString();
-        document.getElementById("kpi-active").textContent =
-          nActive.toLocaleString();
-        document.getElementById("kpi-extinct").textContent =
-          nExtinct.toLocaleString();
-        document.getElementById("kpi-wu").textContent =
-          srcN.WU.toLocaleString();
-        document.getElementById("kpi-awn").textContent =
-          srcN.AWN.toLocaleString();
-        document.getElementById("kpi-gdot").textContent =
-          srcN.GDOT.toLocaleString();
-        document.getElementById("kpi-uga").textContent =
-          srcN.UGA.toLocaleString();
-        document.getElementById("kpi-years").textContent = avgYears;
+        document.getElementById("kpi-total").textContent   = total.toLocaleString();
+        document.getElementById("kpi-active").textContent  = nActive.toLocaleString();
+        document.getElementById("kpi-extinct").textContent = nExtinct.toLocaleString();
+        document.getElementById("kpi-wu").textContent      = srcN.WU.toLocaleString();
+        document.getElementById("kpi-awn").textContent     = srcN.AWN.toLocaleString();
+        document.getElementById("kpi-gdot").textContent    = srcN.GDOT.toLocaleString();
+        document.getElementById("kpi-uga").textContent     = srcN.UGA.toLocaleString();
+        document.getElementById("kpi-years").textContent   = avgYears;
       }
 
       // ── Map load ──────────────────────────────────────────────────────────────────
       map.on("load", async () => {
         const resp = await fetch("stations.geojson");
-        stationsData = await resp.json();
+        const stationsData = await resp.json();
 
-        // ── County boundaries ─────────────────────────────────────────────────────
+        // County boundaries
         map.addSource("counties", {
           type: "geojson",
           data: "metro_atlanta_counties.geojson",
         });
-
         map.addLayer({
           id: "county-outline",
           type: "line",
           source: "counties",
-          paint: {
-            "line-color": "#ffffff",
-            "line-width": 1.8,
-          },
+          paint: { "line-color": "#ffffff", "line-width": 1.8 },
         });
 
-        // ── Source A: clustered (what the user sees) ──────────────────────────────
-        map.addSource("stations-clustered", {
+        // Single flat source — no clustering
+        map.addSource("stations", {
           type: "geojson",
           data: stationsData,
-          cluster: true,
-          clusterMaxZoom: 12,
-          clusterRadius: 45,
         });
 
-        // Cluster bubbles — three tiers: small (cyan), medium (amber), large (red)
+        // Active station dots
         map.addLayer({
-          id: "clusters",
+          id: "dots-active",
           type: "circle",
-          source: "stations-clustered",
-          filter: ["has", "point_count"],
-          paint: {
-            "circle-color": "rgba(0,220,220,0.82)",
-            "circle-radius": [
-              "step",
-              ["get", "point_count"],
-              16,
-              10,
-              24,
-              75,
-              34,
-            ],
-            "circle-stroke-width": 1.5,
-            "circle-stroke-color": "#00FFFF",
-          },
-        });
-
-        // Cluster count labels — use Mapbox's hosted DIN font so it renders in-canvas
-        map.addLayer({
-          id: "cluster-count",
-          type: "symbol",
-          source: "stations-clustered",
-          filter: ["has", "point_count"],
-          layout: {
-            "text-field": "{point_count_abbreviated}",
-            "text-font": ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
-            "text-size": 12,
-          },
-          paint: { "text-color": "#0b0b18" },
-        });
-
-        // Unclustered active points
-        map.addLayer({
-          id: "unclustered-active",
-          type: "circle",
-          source: "stations-clustered",
-          filter: [
-            "all",
-            ["!", ["has", "point_count"]],
-            ["==", ["get", "extinct"], false],
-          ],
+          source: "stations",
+          filter: ["==", ["get", "extinct"], false],
           paint: {
             "circle-color": COLOR_ACTIVE,
             "circle-radius": 5,
@@ -752,16 +632,12 @@
           },
         });
 
-        // Unclustered extinct points
+        // Extinct station dots
         map.addLayer({
-          id: "unclustered-extinct",
+          id: "dots-extinct",
           type: "circle",
-          source: "stations-clustered",
-          filter: [
-            "all",
-            ["!", ["has", "point_count"]],
-            ["==", ["get", "extinct"], true],
-          ],
+          source: "stations",
+          filter: ["==", ["get", "extinct"], true],
           paint: {
             "circle-color": COLOR_EXTINCT,
             "circle-radius": 5,
@@ -770,48 +646,11 @@
           },
         });
 
-        // ── Source B: raw (invisible — for queryRenderedFeatures) ─────────────────
-        // No clustering so every point is always individually rendered (at 0 opacity),
-        // meaning queryRenderedFeatures returns accurate per-station counts at any zoom.
-        map.addSource("stations-raw", {
-          type: "geojson",
-          data: stationsData, // same object — browser does not re-fetch
-        });
-
-        map.addLayer({
-          id: "stations-invisible",
-          type: "circle",
-          source: "stations-raw",
-          paint: {
-            "circle-opacity": 0,
-            "circle-stroke-opacity": 0,
-            "circle-radius": 5,
-          },
-        });
-
-        // Initial filter sync — defer KPI render until tiles are fully loaded
-        map.setFilter("stations-invisible", buildMapboxFilter(false));
         map.once("idle", updateKPIs);
       });
 
       // ── KPI refresh on pan/zoom ───────────────────────────────────────────────────
       map.on("moveend", updateKPIs);
-
-      // ── Cluster click: zoom to expand ────────────────────────────────────────────
-      map.on("click", "clusters", (e) => {
-        const [feature] = map.queryRenderedFeatures(e.point, {
-          layers: ["clusters"],
-        });
-        map
-          .getSource("stations-clustered")
-          .getClusterExpansionZoom(
-            feature.properties.cluster_id,
-            (err, zoom) => {
-              if (!err)
-                map.easeTo({ center: feature.geometry.coordinates, zoom });
-            },
-          );
-      });
 
       // ── Station click: popup ──────────────────────────────────────────────────────
       function showStationPopup(feature, lngLat) {
@@ -859,47 +698,26 @@
             ${extinct ? '<div class="popup-extinct">No recent data</div>' : ""}
         </div>`;
 
-        popup = new mapboxgl.Popup({
-          closeButton: true,
-          maxWidth: "300px",
-          offset: 10,
-        })
+        popup = new mapboxgl.Popup({ closeButton: true, maxWidth: "300px", offset: 10 })
           .setLngLat(lngLat)
           .setHTML(html)
           .addTo(map);
       }
 
-      map.on("click", "unclustered-active", (e) =>
-        showStationPopup(e.features[0], e.lngLat),
-      );
-      map.on("click", "unclustered-extinct", (e) =>
-        showStationPopup(e.features[0], e.lngLat),
-      );
+      map.on("click", "dots-active",  (e) => showStationPopup(e.features[0], e.lngLat));
+      map.on("click", "dots-extinct", (e) => showStationPopup(e.features[0], e.lngLat));
 
       // ── Cursor changes ────────────────────────────────────────────────────────────
-      ["clusters", "unclustered-active", "unclustered-extinct"].forEach(
-        (layer) => {
-          map.on("mouseenter", layer, () => {
-            map.getCanvas().style.cursor = "pointer";
-          });
-          map.on("mouseleave", layer, () => {
-            map.getCanvas().style.cursor = "";
-          });
-        },
-      );
+      ["dots-active", "dots-extinct"].forEach((layer) => {
+        map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
+        map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
+      });
 
       // ── Filter controls ───────────────────────────────────────────────────────────
-      console.log("[switches] customElements.whenDefined called");
       customElements.whenDefined("wa-switch").then(() => {
-        const switches = document.querySelectorAll("wa-switch[data-source]");
-        console.log("[switches] wa-switch defined. Found elements:", switches.length);
-        switches.forEach((sw) => {
-          console.log("[switches] attaching wa-change to", sw.dataset.source, "| nodeName:", sw.nodeName, "| constructor:", sw.constructor.name);
-
-          // Also try 'change' as a fallback in case wa-change isn't the right event name
+        document.querySelectorAll("wa-switch[data-source]").forEach((sw) => {
           ["wa-change", "change"].forEach((evtName) => {
-            sw.addEventListener(evtName, (e) => {
-              console.log(`[switches] '${evtName}' fired on ${sw.dataset.source} | checked: ${sw.checked}`);
+            sw.addEventListener(evtName, () => {
               if (sw.checked) {
                 sw.removeAttribute("data-off");
                 activeSources.add(sw.dataset.source);
@@ -907,7 +725,6 @@
                 sw.setAttribute("data-off", "");
                 activeSources.delete(sw.dataset.source);
               }
-              console.log("[switches] activeSources now:", [...activeSources]);
               applyFilters();
             });
           });
@@ -917,13 +734,10 @@
       document.querySelectorAll(".status-btn").forEach((btn) => {
         btn.addEventListener("click", () => {
           statusFilter = btn.dataset.s;
-          console.log("[status-btn] clicked:", statusFilter);
           document.querySelectorAll(".status-btn").forEach((b) => {
             b.className = "status-btn";
             if (b.dataset.s === statusFilter) {
-              b.classList.add(
-                statusFilter === "extinct" ? "sel-extinct" : "sel-all",
-              );
+              b.classList.add(statusFilter === "extinct" ? "sel-extinct" : "sel-all");
             }
           });
           applyFilters();
