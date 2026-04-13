@@ -507,10 +507,26 @@
 
       // Per-source badge colors (popup only)
       const SOURCE_COLOR = {
-        WU:   { bg: "rgba(96,165,250,0.15)",  border: "rgba(96,165,250,0.4)",  text: "#60a5fa" },
-        AWN:  { bg: "rgba(52,211,153,0.15)",  border: "rgba(52,211,153,0.4)",  text: "#34d399" },
-        GDOT: { bg: "rgba(251,146,60,0.15)",  border: "rgba(251,146,60,0.4)",  text: "#fb923c" },
-        UGA:  { bg: "rgba(167,139,250,0.15)", border: "rgba(167,139,250,0.4)", text: "#a78bfa" },
+        WU: {
+          bg: "rgba(96,165,250,0.15)",
+          border: "rgba(96,165,250,0.4)",
+          text: "#60a5fa",
+        },
+        AWN: {
+          bg: "rgba(52,211,153,0.15)",
+          border: "rgba(52,211,153,0.4)",
+          text: "#34d399",
+        },
+        GDOT: {
+          bg: "rgba(251,146,60,0.15)",
+          border: "rgba(251,146,60,0.4)",
+          text: "#fb923c",
+        },
+        UGA: {
+          bg: "rgba(167,139,250,0.15)",
+          border: "rgba(167,139,250,0.4)",
+          text: "#a78bfa",
+        },
       };
 
       // ── State ────────────────────────────────────────────────────────────────────
@@ -525,32 +541,44 @@
         center: MAP_CENTER,
         zoom: MAP_ZOOM,
         minZoom: 7,
-        maxBounds: [[-86.5, 32.2], [-82.5, 35.8]],
+        maxBounds: [
+          [-86.5, 32.2],
+          [-82.5, 35.8],
+        ],
         attributionControl: false,
       });
 
-      map.addControl(new mapboxgl.AttributionControl({ compact: true }), "bottom-right");
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+      map.addControl(
+        new mapboxgl.AttributionControl({ compact: true }),
+        "bottom-right",
+      );
+      map.addControl(
+        new mapboxgl.NavigationControl({ showCompass: false }),
+        "top-right",
+      );
 
       // ── Apply filters to dot layers ───────────────────────────────────────────────
       function applyFilters() {
         const srcList = [...activeSources];
-        const srcExpr = srcList.length > 0
-          ? ["in", ["get", "source"], ["literal", srcList]]
-          : ["==", ["literal", false], true]; // no sources → show nothing
+        const srcExpr =
+          srcList.length > 0
+            ? ["in", ["get", "source"], ["literal", srcList]]
+            : ["==", ["literal", false], true]; // no sources → show nothing
 
         // Active dots: visible unless status filter is "extinct"
-        map.setFilter("dots-active",
+        map.setFilter(
+          "dots-active",
           statusFilter === "extinct"
             ? ["==", ["literal", false], true]
-            : ["all", ["==", ["get", "extinct"], false], srcExpr]
+            : ["all", ["==", ["get", "extinct"], false], srcExpr],
         );
 
         // Extinct dots: visible unless status filter is "active"
-        map.setFilter("dots-extinct",
+        map.setFilter(
+          "dots-extinct",
           statusFilter === "active"
             ? ["==", ["literal", false], true]
-            : ["all", ["==", ["get", "extinct"], true], srcExpr]
+            : ["all", ["==", ["get", "extinct"], true], srcExpr],
         );
 
         map.once("idle", updateKPIs);
@@ -559,7 +587,9 @@
       // ── KPI computation ───────────────────────────────────────────────────────────
       function updateKPIs() {
         if (!map.getLayer("dots-active")) return;
-        const raw = map.queryRenderedFeatures({ layers: ["dots-active", "dots-extinct"] });
+        const raw = map.queryRenderedFeatures({
+          layers: ["dots-active", "dots-extinct"],
+        });
 
         // Deduplicate across tile boundaries by station_id.
         const seen = new Set();
@@ -572,7 +602,9 @@
           }
         }
 
-        let nActive = 0, nExtinct = 0, totalYears = 0;
+        let nActive = 0,
+          nExtinct = 0,
+          totalYears = 0;
         const srcN = { WU: 0, AWN: 0, GDOT: 0, UGA: 0 };
 
         for (const f of unique) {
@@ -585,14 +617,21 @@
         const total = unique.length;
         const avgYears = total > 0 ? (totalYears / total).toFixed(1) : "—";
 
-        document.getElementById("kpi-total").textContent   = total.toLocaleString();
-        document.getElementById("kpi-active").textContent  = nActive.toLocaleString();
-        document.getElementById("kpi-extinct").textContent = nExtinct.toLocaleString();
-        document.getElementById("kpi-wu").textContent      = srcN.WU.toLocaleString();
-        document.getElementById("kpi-awn").textContent     = srcN.AWN.toLocaleString();
-        document.getElementById("kpi-gdot").textContent    = srcN.GDOT.toLocaleString();
-        document.getElementById("kpi-uga").textContent     = srcN.UGA.toLocaleString();
-        document.getElementById("kpi-years").textContent   = avgYears;
+        document.getElementById("kpi-total").textContent =
+          total.toLocaleString();
+        document.getElementById("kpi-active").textContent =
+          nActive.toLocaleString();
+        document.getElementById("kpi-extinct").textContent =
+          nExtinct.toLocaleString();
+        document.getElementById("kpi-wu").textContent =
+          srcN.WU.toLocaleString();
+        document.getElementById("kpi-awn").textContent =
+          srcN.AWN.toLocaleString();
+        document.getElementById("kpi-gdot").textContent =
+          srcN.GDOT.toLocaleString();
+        document.getElementById("kpi-uga").textContent =
+          srcN.UGA.toLocaleString();
+        document.getElementById("kpi-years").textContent = avgYears;
       }
 
       // ── Map load ──────────────────────────────────────────────────────────────────
@@ -626,9 +665,9 @@
           filter: ["==", ["get", "extinct"], false],
           paint: {
             "circle-color": COLOR_ACTIVE,
-            "circle-radius": 5,
+            "circle-radius": 4,
             "circle-stroke-width": 1,
-            "circle-stroke-color": "rgba(0,0,0,0.5)",
+            "circle-stroke-color": "rgba(255,255,255,0.5)",
           },
         });
 
@@ -640,9 +679,9 @@
           filter: ["==", ["get", "extinct"], true],
           paint: {
             "circle-color": COLOR_EXTINCT,
-            "circle-radius": 5,
+            "circle-radius": 4,
             "circle-stroke-width": 1,
-            "circle-stroke-color": "rgba(0,0,0,0.5)",
+            "circle-stroke-color": "rgba(255,255,255,0.5)",
           },
         });
 
@@ -698,19 +737,31 @@
             ${extinct ? '<div class="popup-extinct">No recent data</div>' : ""}
         </div>`;
 
-        popup = new mapboxgl.Popup({ closeButton: true, maxWidth: "300px", offset: 10 })
+        popup = new mapboxgl.Popup({
+          closeButton: true,
+          maxWidth: "300px",
+          offset: 10,
+        })
           .setLngLat(lngLat)
           .setHTML(html)
           .addTo(map);
       }
 
-      map.on("click", "dots-active",  (e) => showStationPopup(e.features[0], e.lngLat));
-      map.on("click", "dots-extinct", (e) => showStationPopup(e.features[0], e.lngLat));
+      map.on("click", "dots-active", (e) =>
+        showStationPopup(e.features[0], e.lngLat),
+      );
+      map.on("click", "dots-extinct", (e) =>
+        showStationPopup(e.features[0], e.lngLat),
+      );
 
       // ── Cursor changes ────────────────────────────────────────────────────────────
       ["dots-active", "dots-extinct"].forEach((layer) => {
-        map.on("mouseenter", layer, () => { map.getCanvas().style.cursor = "pointer"; });
-        map.on("mouseleave", layer, () => { map.getCanvas().style.cursor = ""; });
+        map.on("mouseenter", layer, () => {
+          map.getCanvas().style.cursor = "pointer";
+        });
+        map.on("mouseleave", layer, () => {
+          map.getCanvas().style.cursor = "";
+        });
       });
 
       // ── Filter controls ───────────────────────────────────────────────────────────
@@ -737,7 +788,9 @@
           document.querySelectorAll(".status-btn").forEach((b) => {
             b.className = "status-btn";
             if (b.dataset.s === statusFilter) {
-              b.classList.add(statusFilter === "extinct" ? "sel-extinct" : "sel-all");
+              b.classList.add(
+                statusFilter === "extinct" ? "sel-extinct" : "sel-all",
+              );
             }
           });
           applyFilters();
